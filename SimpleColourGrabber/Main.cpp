@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <iomanip>
 
-const char g_szClassName[] = "ColourChecker";
+const char g_szClassName[] = "SimpleColourGrabber";
 const int g_box_size = 30;
 
 bool g_ctrl_key_down = false;
