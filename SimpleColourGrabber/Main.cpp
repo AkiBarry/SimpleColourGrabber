@@ -3,25 +3,28 @@
 #include <sstream>
 #include <algorithm>
 #include <iomanip>
+#include <thread>
 
 const char g_szClassName[] = "SimpleColourGrabber";
 const int g_box_size = 30;
-
-bool g_ctrl_key_down = false;
-bool g_shift_key_down = false;
 
 bool g_window_shown = false;
 
 HWND g_hwnd;
 
-void WriteStringToClipboard(const std::string &s) {
-	OpenClipboard(0);
+COLORREF g_color_at_cursor = RGB(0,0,0);
+
+void WriteStringToClipboard(const std::string &s)
+{
+	OpenClipboard(nullptr);
 	EmptyClipboard();
+
 	HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, s.size() + 1);
 	if (!hg) {
 		CloseClipboard();
 		return;
 	}
+
 	memcpy(GlobalLock(hg), s.c_str(), s.size() + 1);
 	GlobalUnlock(hg);
 	SetClipboardData(CF_TEXT, hg);
@@ -29,7 +32,7 @@ void WriteStringToClipboard(const std::string &s) {
 	GlobalFree(hg);
 }
 
-void Test()
+void CloseAndClipboard()
 {
 	POINT cursor_pos;
 	GetCursorPos(&cursor_pos);
@@ -38,48 +41,83 @@ void Test()
 	COLORREF global_color_at_cursor = GetPixel(null_hdc, cursor_pos.x, cursor_pos.y);
 	ReleaseDC(NULL, null_hdc);
 
-	if (g_ctrl_key_down && g_shift_key_down)
+	SetWindowPos(g_hwnd,
+		HWND_TOPMOST,
+		cursor_pos.x + 10,
+		cursor_pos.y - g_box_size - 10,
+		g_box_size,
+		g_box_size,
+		SWP_SHOWWINDOW
+	);
+
+	int red = GetRValue(global_color_at_cursor);
+	int green = GetGValue(global_color_at_cursor);
+	int blue = GetBValue(global_color_at_cursor);
+
+	std::stringstream ss;
+
+	ss	<< "#"
+		<< std::setfill('0') << std::setw(2)
+		<< std::hex << red << green << blue;
+
+	WriteStringToClipboard(ss.str());
+
+	SetWindowPos(g_hwnd,
+		HWND_BOTTOM,
+		-g_box_size - 10,
+		-g_box_size - 10,
+		g_box_size,
+		g_box_size,
+		SWP_HIDEWINDOW | SWP_NOSIZE
+	);
+
+	SendMessage(g_hwnd, WM_CLOSE, 0, NULL);
+	DestroyWindow(g_hwnd);
+	PostQuitMessage(0);
+}
+
+LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	if (nCode == HC_ACTION && wParam == WM_KEYUP)
+		CloseAndClipboard();
+
+	return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	if (nCode == HC_ACTION && wParam == WM_MOUSEMOVE)
 	{
-		SetWindowPos(g_hwnd,
-			HWND_TOPMOST,
-			cursor_pos.x + 10,
-			cursor_pos.y - g_box_size - 10,
-			g_box_size,
-			g_box_size,
-			SWP_SHOWWINDOW
-		);
-
-		g_window_shown = true;
-	}
-	else if (g_window_shown)
-	{
-		g_window_shown = false;
-
-		int red = GetRValue(global_color_at_cursor);
-		int green = GetGValue(global_color_at_cursor);
-		int blue = GetBValue(global_color_at_cursor);
-
-		std::stringstream ss;
-
-		ss	<< "#"
-			<< std::setfill('0') << std::setw(2)
-			<< std::hex << red << green << blue;
-
-		WriteStringToClipboard(ss.str());
-
-		SetWindowPos(g_hwnd,
-			HWND_BOTTOM,
-			-g_box_size - 10,
-			-g_box_size - 10,
-			g_box_size,
-			g_box_size,
-			SWP_HIDEWINDOW | SWP_NOSIZE
-		);
+		PostMessage(g_hwnd, WM_USER, NULL,NULL);
 	}
 
-	HDC current_dc = GetDC(g_hwnd);
+	return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+void cool()
+{
+	static POINT last_cursor_pos = { 0, 0 };
+
+	POINT cursor_pos;
+	GetCursorPos(&cursor_pos);
+
+	if (cursor_pos.x == last_cursor_pos.x && cursor_pos.y == last_cursor_pos.y)
+		return;
+
+	last_cursor_pos = cursor_pos;
+
+	SetWindowPos(g_hwnd,
+		HWND_TOPMOST,
+		cursor_pos.x + 10,
+		cursor_pos.y - g_box_size - 10,
+		g_box_size,
+		g_box_size,
+		SWP_SHOWWINDOW
+	);
 
 	InvalidateRect(g_hwnd, NULL, FALSE);
+
+	HDC current_dc = GetDC(g_hwnd);
 
 	PAINTSTRUCT ps;
 	HDC hdc = BeginPaint(g_hwnd, &ps);
@@ -88,56 +126,39 @@ void Test()
 	--ps.rcPaint.bottom;
 	--ps.rcPaint.right;
 	++ps.rcPaint.left;
-	FillRect(hdc, &ps.rcPaint, CreateSolidBrush(global_color_at_cursor));
+	FillRect(hdc, &ps.rcPaint, CreateSolidBrush(g_color_at_cursor));
+	//FillRect(hdc, &ps.rcPaint, CreateSolidBrush(RGB(rand() % 255, rand() % 255, rand() % 255)));
 	EndPaint(g_hwnd, &ps);
 
 	ReleaseDC(g_hwnd, current_dc);
 }
 
-LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode == HC_ACTION)
+	if (uMsg == WM_USER)
 	{
-		switch (wParam)
-		{
-		case WM_SYSKEYDOWN:
-		case WM_KEYDOWN:
-		{
-			PKBDLLHOOKSTRUCT p = (PKBDLLHOOKSTRUCT)lParam;
-			if (p->vkCode == VK_LCONTROL)
-			{
-				g_ctrl_key_down = true;
-				Test();
-			}
-			else if (p->vkCode == VK_LSHIFT)
-			{
-				g_shift_key_down = true;
-				Test();
-			}
-		}
-			break;
-		case WM_SYSKEYUP:
-		case WM_KEYUP:
-		{
-			PKBDLLHOOKSTRUCT p = (PKBDLLHOOKSTRUCT)lParam;
-			if (p->vkCode == VK_LCONTROL)
-			{
-				g_ctrl_key_down = false;
-				Test();
-			}
-			else if (p->vkCode == VK_LSHIFT)
-			{
-				g_shift_key_down = false;
-				Test();
-			}
-		}
-			break;
-		default:
-			break;
-		}
+		cool();
+		return 0;
 	}
 
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
+	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+void UpdateColour()
+{
+	
+
+	while (true)
+	{
+		HDC null_hdc = GetDC(NULL);
+		POINT cursor_pos;
+		GetCursorPos(&cursor_pos);
+
+		g_color_at_cursor = GetPixel(null_hdc, cursor_pos.x, cursor_pos.y);
+		ReleaseDC(NULL, null_hdc);
+	}
+
+	
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
@@ -148,7 +169,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.style = 0;
-	wc.lpfnWndProc = DefWindowProc;
+	wc.lpfnWndProc = WindowProc;
 	wc.cbClsExtra = 0;
 	wc.cbWndExtra = 0;
 	wc.hInstance = hInstance;
@@ -186,7 +207,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	ShowWindow(g_hwnd, SW_HIDE);
 	UpdateWindow(g_hwnd);
 
-	const HHOOK hhkLowLevelKybd = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, 0, 0);
+	const HHOOK hhkLowLevelKeyboard = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, 0, 0);
+	const HHOOK hhkLowLevelMouse = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, 0, 0);
+
+	std::thread t1(UpdateColour);
 
 	while (GetMessage(&Msg, NULL, 0, 0) > 0)
 	{
@@ -194,7 +218,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		DispatchMessage(&Msg);
 	}
 
-	UnhookWindowsHookEx(hhkLowLevelKybd);
+	UnhookWindowsHookEx(hhkLowLevelKeyboard);
+	UnhookWindowsHookEx(hhkLowLevelMouse);
 
 	return Msg.wParam;
 }
