@@ -1,3 +1,4 @@
+#include <condition_variable>
 #include <windows.h>
 #include <string>
 #include <sstream>
@@ -6,6 +7,9 @@
 
 const char g_szClassName[] = "SimpleColourGrabber";
 const int g_box_size = 30;
+
+std::condition_variable mouse_moved;
+std::mutex mouse_moved_m;
 
 bool g_window_shown = false;
 
@@ -84,6 +88,7 @@ LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 			CloseAndClipboard();
 		} else if (wParam == WM_MOUSEMOVE)
 		{
+			mouse_moved.notify_all();
 			PostMessage(g_hwnd, WM_USER, NULL,NULL);
 		}
 		
@@ -144,8 +149,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void UpdateColour()
 {
-	while (true)
-	{
+	while(true) {
+		std::unique_lock<std::mutex> lk(mouse_moved_m);
+		mouse_moved.wait(lk);
+
 		HDC null_hdc = GetDC(NULL);
 		POINT cursor_pos;
 		GetCursorPos(&cursor_pos);
