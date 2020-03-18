@@ -97,7 +97,7 @@ LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 	return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
-void cool()
+void UpdateAndPaintWindow()
 {
 	static POINT last_cursor_pos = { 0, 0 };
 
@@ -140,7 +140,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	if (uMsg == WM_USER)
 	{
-		cool();
+		UpdateAndPaintWindow();
 		return 0;
 	}
 
