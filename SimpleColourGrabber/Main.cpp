@@ -1,7 +1,6 @@
 #include <windows.h>
 #include <string>
 #include <sstream>
-#include <algorithm>
 #include <iomanip>
 #include <thread>
 
@@ -76,19 +75,18 @@ void CloseAndClipboard()
 	PostQuitMessage(0);
 }
 
-LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
-{
-	if (nCode == HC_ACTION && wParam == WM_KEYUP)
-		CloseAndClipboard();
-
-	return CallNextHookEx(nullptr, nCode, wParam, lParam);
-}
-
 LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode == HC_ACTION && wParam == WM_MOUSEMOVE)
+	if (nCode == HC_ACTION)
 	{
-		PostMessage(g_hwnd, WM_USER, NULL,NULL);
+		if(wParam == WM_LBUTTONDOWN)
+		{
+			CloseAndClipboard();
+		} else if (wParam == WM_MOUSEMOVE)
+		{
+			PostMessage(g_hwnd, WM_USER, NULL,NULL);
+		}
+		
 	}
 
 	return CallNextHookEx(nullptr, nCode, wParam, lParam);
@@ -146,8 +144,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void UpdateColour()
 {
-	
-
 	while (true)
 	{
 		HDC null_hdc = GetDC(NULL);
@@ -157,8 +153,6 @@ void UpdateColour()
 		g_color_at_cursor = GetPixel(null_hdc, cursor_pos.x, cursor_pos.y);
 		ReleaseDC(NULL, null_hdc);
 	}
-
-	
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
@@ -207,7 +201,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	ShowWindow(g_hwnd, SW_HIDE);
 	UpdateWindow(g_hwnd);
 
-	const HHOOK hhkLowLevelKeyboard = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, 0, 0);
 	const HHOOK hhkLowLevelMouse = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, 0, 0);
 
 	std::thread t1(UpdateColour);
@@ -218,7 +211,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		DispatchMessage(&Msg);
 	}
 
-	UnhookWindowsHookEx(hhkLowLevelKeyboard);
 	UnhookWindowsHookEx(hhkLowLevelMouse);
 
 	return Msg.wParam;
